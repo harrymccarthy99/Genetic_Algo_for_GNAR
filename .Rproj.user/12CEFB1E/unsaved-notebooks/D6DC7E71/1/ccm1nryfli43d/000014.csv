@@ -1,0 +1,4 @@
+"0","# Get the world cities data
+data(world.cities)
+"
+"2","data set ‘world.cities’ not found"

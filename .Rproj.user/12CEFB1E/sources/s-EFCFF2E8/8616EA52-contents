@@ -1,0 +1,447 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+OECD Unemployment Data 
+
+
+```{r packages, echo = FALSE}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(lubridate)
+library(tidyverse)
+library(geodist)
+library(countrycode)
+library(geodist)
+library(dplyr)
+library(maps)
+library(ggmap)
+library(igraph)
+library(geosphere)
+library(GNAR)
+```
+
+```{r readcsv, echo = FALSE}
+setwd('/Users/harrymccarthy/Documents/Imperial/Summer_Project/Unmployment Data')
+data <- read.csv('OECD_monthly_unemployment.csv')
+data$Month_Year <- ym(data$TIME_PERIOD)  # Parse year-month-day format
+```
+
+
+```{r colnames, echo = FALSE}
+colnames(data)
+```
+
+
+
+```{r}
+head(data)
+```
+
+```{r filter cols, echo = FALSE}
+cols_to_keep <- c('REF_AREA', 'Reference.area', 'Month_Year', 'OBS_VALUE')
+data <- data[, cols_to_keep]
+```
+
+
+```{r}
+unique(data$Reference.area)
+```
+
+```{r}
+unique(data$REF_AREA)
+```
+
+```{r areas_to_remove, echo = FALSE}
+areas_to_remove <- c('OECD', 'EA20', 'EU27_2020', 'G7')
+data <- data[!(data$REF_AREA %in% areas_to_remove), ]
+```
+
+Note; New Zealand missing, no monthly data available on OECD site
+
+Issue here with rates; a large change in the unemployment rate in a small country will likely have a negligible effect on the unemployment rate in a bigger country
+
+
+```{r}
+
+# Assuming 'data' is your data frame with columns Month_Year, OBS_VALUE, and REF_AREA
+
+# Plot using ggplot2 with viridis color palette
+ggplot(data, aes(x = Month_Year, y = OBS_VALUE, color = REF_AREA)) +
+  geom_line() +
+  labs(x = "Year", y = "Unemployment Rate", title = "Unemployment Rate by Country over Time") +
+  scale_color_viridis_d(name = "Country", option = "plasma") + # Use 'plasma' or another option for color scheme
+  theme_minimal() +   # Using a minimal theme
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()    # Remove minor gridlines
+  )
+
+```
+
+
+```{r}
+cols_to_keep <- c('REF_AREA', 'Reference.area', 'Month_Year', 'OBS_VALUE')
+data <- data[, cols_to_keep]
+head(data)
+```
+
+Heatmap of correlations between member countries, Turkey notably is uncorrelated with many EU countries
+
+```{r}
+data_wide <- dcast(data, Month_Year ~ REF_AREA, value.var = "OBS_VALUE")
+
+# Calculate the correlation matrix
+corr_matrix <- cor(data_wide[, -1], use = "complete.obs")
+
+# Convert to long format for ggplot
+corr_long <- melt(corr_matrix)
+
+# Plot the heatmap
+ggplot(corr_long, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = "plasma", name = "Correlation") +
+  theme_minimal() +
+  labs(x = "Country", y = "Country", title = "Correlation of Unemployment Rates") +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+
+  )
+```
+
+
+```{r country_to_codes, echo = FALSE}
+
+countries <- c(
+  "Belgium", "Japan", "Czechia", "Spain", "Mexico", 
+  "Lithuania", "Norway", "Colombia", "Israel", "Australia", 
+  "Austria", "Costa Rica", "Portugal", "Germany", "Luxembourg", 
+  "Sweden", "Canada", "Italy", "Poland", "Türkiye", 
+  "France", "Greece", "Denmark", "Slovak Republic", "Ireland", 
+  "Iceland", "United Kingdom", "Netherlands", "Hungary", "Korea", 
+  "Latvia", "Finland", "Chile", "Slovenia", "United States", 
+  "Estonia", "Bulgaria"
+)
+iso_codes <- c(
+  "BE", "JP", "CZ", "ES", "MX", 
+  "LT", "NO", "CO", "IL", "AU", 
+  "AT", "CR", "PT", "DE", "LU", 
+  "SE", "CA", "IT", "PL", "TR", 
+  "FR", "GR", "DK", "SK", "IE", 
+  "IS", "GB", "NL", "HU", "KR", 
+  "LV", "FI", "CL", "SI", "US", 
+  "EE", "BG"
+)
+
+# Create a mapping data frame
+country_mapping <- data.frame(
+  country = countries,
+  Country = iso_codes
+)
+
+# Merge country_mapping with data based on Reference.area
+data <- merge(data, country_mapping, by.x = "Reference.area", by.y = "country", all.x = TRUE)
+
+head(data)
+
+```
+
+
+
+
+```{r}
+# Pivot the data to wider format
+unemployment_ts <- data[, c('Month_Year', 'Country', "OBS_VALUE")] %>%
+  pivot_wider(names_from = Country, values_from = OBS_VALUE) %>%
+  arrange(Month_Year)
+
+# Print the resulting data frame
+print(unemployment_ts)
+```
+
+First look at missing data;
+
+Colombia not available until 2007
+Israel not available until 2012
+Costa Rica not available until 2010-08-01
+Turkey not available until 2005
+Iceland not available until 2003
+
+
+
+# Install and load necessary packages
+
+```{r}
+# Define the list of countries and their ISO alpha-2 codes
+countries <- c(
+  "Belgium", "Japan", "Czech Republic", "Spain", "Mexico", 
+  "Lithuania", "Norway", "Colombia", "Israel", "Australia", 
+  "Austria", "Costa Rica", "Portugal", "Germany", "Luxembourg", 
+  "Sweden", "Canada", "Italy", "Poland", "Turkey", 
+  "France", "Greece", "Denmark", "Slovakia", "Ireland", 
+  "Iceland", "UK", "Netherlands", "Hungary", "Korea South", 
+  "Latvia", "Finland", "Chile", "Slovenia", "USA", 
+  "Estonia", "Bulgaria"
+)
+
+
+# Create a mapping data frame
+country_mapping <- data.frame(
+  country = countries,
+  iso2 = iso_codes
+)
+
+# Get the world cities data
+data(world.cities)
+
+# Filter for capital cities and match with the provided country names
+capitals <- subset(world.cities, capital == 1)
+capitals <- capitals[capitals$country.etc %in% countries, ]
+capitals <- distinct(capitals, country.etc, .keep_all = TRUE)[,c('country.etc', 'lat', 'long')] %>%
+  arrange(country.etc)
+```
+
+Converting the country names to the OECD standard
+
+```{r}
+# Mapping of country names to replace
+replace_map <- data.frame(
+  From = c("USA", "UK", "Czech Republic", "Slovakia", "Korea South", "Turkey"),
+  To = c("United States", "United Kingdom", "Czechia", "Slovak Republic", "Korea", "Türkiye")
+)
+
+# Replace country names in df based on condition
+capitals$country.etc <- ifelse(capitals$country.etc %in% replace_map$From, 
+                     replace_map$To[match(capitals$country.etc, replace_map$From)],
+                     capitals$country.etc)
+unique(capitals$country.etc)
+```
+
+
+```{r}
+countries <- c(
+  "Belgium", "Japan", "Czechia", "Spain", "Mexico", 
+  "Lithuania", "Norway", "Colombia", "Israel", "Australia", 
+  "Austria", "Costa Rica", "Portugal", "Germany", "Luxembourg", 
+  "Sweden", "Canada", "Italy", "Poland", "Türkiye", 
+  "France", "Greece", "Denmark", "Slovak Republic", "Ireland", 
+  "Iceland", "United Kingdom", "Netherlands", "Hungary", "Korea", 
+  "Latvia", "Finland", "Chile", "Slovenia", "United States", 
+  "Estonia", "Bulgaria"
+)
+iso_codes <- c(
+  "BE", "JP", "CZ", "ES", "MX", 
+  "LT", "NO", "CO", "IL", "AU", 
+  "AT", "CR", "PT", "DE", "LU", 
+  "SE", "CA", "IT", "PL", "TR", 
+  "FR", "GR", "DK", "SK", "IE", 
+  "IS", "GB", "NL", "HU", "KR", 
+  "LV", "FI", "CL", "SI", "US", 
+  "EE", "BG"
+)
+
+legend_df <- data.frame(
+  iso_code = iso_codes,
+  country = countries
+)
+
+# Create a mapping data frame
+country_mapping <- data.frame(
+  country = countries,
+  Country = iso_codes
+)
+
+# Merge country_mapping with data based on Reference.area
+capitals <- merge(capitals, country_mapping, by.x = "country.etc", by.y = "country", all.x = TRUE)%>%
+  arrange(Country)
+```
+
+```{r}
+capitals
+```
+
+
+```{r dist_matrix, echo  = FALSE}
+dist_matrix <- function(min_dist){
+  # Calculate pairwise distances
+  distances <- distm(capitals[, c("long", "lat")], 
+                   capitals[, c("long", "lat")],
+                   fun = distHaversine)
+  # Convert distances to matrix
+  distance_matrix <- as.matrix(distances)/1000
+  # Set distances greater than 1000 km to zero, and 1 otherwise
+  distance_matrix <- ifelse(distance_matrix > 600, 0, 1)
+  diag(distance_matrix) <- 0
+  
+  # Add row and column names
+  rownames(distance_matrix) <- capitals$Country
+  colnames(distance_matrix) <- capitals$Country
+  
+  return(distance_matrix)
+}
+
+distance_matrix_600 <- dist_matrix(600)
+distance_matrix_600
+```
+
+
+```{r min_spanning_tree}
+
+min_spanning_tree<- function(n){
+  # Create a fully connected graph with edge weights of 1
+  # Generate an adjacency matrix with weights of 1
+  adj_matrix <- matrix(1, n, n)
+  diag(adj_matrix) <- 0 # No self-loops
+  
+  # Create the graph
+  graph <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected", weighted = TRUE)
+  
+  # Find the minimal spanning tree
+  mst <- mst(graph)
+  
+  return(as_adjacency_matrix(mst, sparse = FALSE))
+}
+
+
+
+
+MST_37 <- min_spanning_tree(37)
+
+```
+
+```{r}
+merge_adjacency_matrices_igraph <- function(matrix1, matrix2) {
+  # Convert the adjacency matrices to igraph graph objects
+  graph1 <- graph_from_adjacency_matrix(matrix1, mode = "undirected")
+  graph2 <- graph_from_adjacency_matrix(matrix2, mode = "undirected")
+  
+  # Perform the union of the two graphs
+  merged_graph <- graph.union(graph1, graph2)
+  
+  # Convert the merged graph back to an adjacency matrix
+  merged_matrix <- as_adjacency_matrix(merged_graph, sparse = FALSE)
+  
+  return(merged_matrix)
+}
+
+merged_matrices <- merge_adjacency_matrices_igraph(distance_matrix_600, MST_37)
+
+```
+
+
+
+```{r}
+# Assuming distance_matrix is your matrix
+df <- reshape2::melt(merged_matrices)  # reshape matrix to long format
+
+# Create plot using ggplot2
+ggplot(df, aes(x = Var2, y = Var1, fill = value)) +
+  geom_tile(color = "white") +
+  labs(title = "Inferred Adjacency Matrix (550km)") +
+    scale_fill_gradient(low = "white", high = "blue") +  # adjust color gradient as needed
+  theme_minimal() +
+  theme(
+        axis.title.x = element_blank(), # remove x-axis title
+        axis.title.y = element_blank(), # remove y-axis title
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+# Assuming distance_matrix is already calculated and set up as described earlier
+
+# Create a graph object from the adjacency matrix
+g <- graph.adjacency(merged_matrices, mode = "undirected", weighted = TRUE)
+
+# Set vertex attributes for labels
+V(g)$label <- rownames(merged_matrices)
+
+# Plot the graph with adjusted parameters
+plot(g, layout = layout_with_fr,
+     vertex.size = 10,            # Increase node size
+     vertex.label.cex = 0.8,      # Adjust label size
+     vertex.label.dist = 0.8,     # Increase label distance from nodes
+     vertex.color = "lightblue",  # Node color
+     vertex.frame.color = "gray", # Node border color
+     edge.width = 2,              # Edge thickness
+     edge.color = "black",        # Edge color
+     main = "Distance Inferred Adjacency Matrix - 600km Proximity")
+```
+
+
+```{r}
+distance_net<- as.GNARnet(merged_matrices)
+corbit_plot(unemployment_vts, distance_net, 20, 3, partial = "yes")
+```
+
+```{r}
+save(list = c('distance_net', 'unemployment_vts'), file =  'daniel.RData')
+```
+
+```{r}
+load('daniel.RData')
+distance_net
+unemployment_vts
+```
+
+Indicates a GNAR(1, [1]), GNAR(1, [2]) or GNAR(1, [3]) should be most suitable, lets try them all with global and local alpha fits and see which performs best at within sample prediction
+
+
+```{r gnar_fits, echo = FALSE}
+
+run_GNARfit <- function(vts, net, alphaOrder, betaOrders, globalalpha_options) {
+  results <- list()
+  
+  for (globalalpha in globalalpha_options) {
+    for (betaOrder in betaOrders) {
+      model_name <- paste0(
+        ifelse(globalalpha, "ga_", ""), 
+        "GNAR_", alphaOrder, "_", betaOrder
+      )
+      results[[model_name]] <- GNARfit(
+        vts = vts, 
+        net = net, 
+        alphaOrder = alphaOrder, 
+        betaOrder = betaOrder, 
+        globalalpha = globalalpha
+      )
+    }
+  }
+  
+  return(results)
+}
+
+# Example usage:
+alphaOrder <- 1
+betaOrders <- c(1, 2, 3)
+globalalpha_options <- c(TRUE, FALSE)
+
+# Run GNARfit for different combinations
+results <- run_GNARfit(vts = unemployment_vts[1:275, ], net = distance_net, alphaOrder = alphaOrder, betaOrders = betaOrders, globalalpha_options = globalalpha_options)
+
+# Access individual results
+ga_GNAR_1_1 <- results[["ga_GNAR_1_1"]]
+ga_GNAR_1_2 <- results[["ga_GNAR_1_2"]]
+ga_GNAR_1_3 <- results[["ga_GNAR_1_3"]]
+GNAR_1_1 <- results[["GNAR_1_1"]]
+GNAR_1_2 <- results[["GNAR_1_2"]]
+GNAR_1_3 <- results[["GNAR_1_3"]]
+
+```
+
+Global alpha GNAR(1, [1]) performs best despite corbit PNACF indicating the third neighbour is 
+
+```{r}
+sum(unemployment_vts[276,]-predict(ga_GNAR_1_1))^2
+sum(unemployment_vts[276,]-predict(ga_GNAR_1_2))^2
+sum(unemployment_vts[276,]-predict(ga_GNAR_1_3))^2
+
+sum(unemployment_vts[276,]-predict(GNAR_1_1))^2
+sum(unemployment_vts[276,]-predict(GNAR_1_2))^2
+sum(unemployment_vts[276,]-predict(GNAR_1_3))^2
+```
+
+

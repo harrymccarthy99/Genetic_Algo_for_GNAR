@@ -1,0 +1,522 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+***What issue are we actually trying to tackle?***
+
+We aim to enhance an inferred network of k additional edges over a fully connected network.
+
+***Example;***
+
+Consider a network connecting international capital cities using the Minimum Spanning Tree (MST) inferred by the distances between the capitals. Next, we add k edges based on the proximity of capitals.
+
+***Objective:***
+
+Can we implement Thompson Sampling to find a more meaningful network than the one obtained by simply adding k edges to the MST?
+
+Can the algorithm outperform heuristic-based networks created using quick and dirty methods?
+
+***Previous Implementation;***
+
+- Found the MST
+- Added k edges connecting cities of <600km distance apart
+- Fitted a Corbit plot using this network, used the implied GNAR model in the following algorithm
+- Found the additional number of edges added
+- Implemented Thompson's Algorithm;
+    (i) Initialised an uniformative Normal prior over the reward (prediction accuracy) associated witht the addition of each edge
+    (ii) Used a Inverse Gamma prior for the variance of the reward
+    (iii) Sampled from each arm
+    (iv) Found edge with highest reward 
+    (v) Added this edge to the MST
+    (vi) Fit GNAR with new network and find prediction accuracy
+    (vii) Update posterior distributions accordingly using standard Bayesian updating procedure
+    (viii) Repeat from step (iii) for Num-iterations
+    (ix) Find the k arms with the lowest means
+    (x) Fit GNAR with this final network
+- Compared with fit of the distance inferred network
+
+
+***Issues with previous Thompson's Sampling Implementation***
+
+Randomly adding an edge to the MST will produce the same reward every time the same edge is added.
+
+There will be no variablity in the reward for each edge added in this setting.
+
+The edges must be added to a different network each time, this will invoke variablility in the reward achieved.
+
+
+***Alternative Approach***
+
+Some notation;
+ - $m$; Number of edges added in the construction of the MST, this equals $n-1$
+ - $k$; Target number of edges we wish to add to the MST
+ - $l$; Number of edges added to the graph in the current iteration
+ 
+Assume the mean marginal reward associated with the addition of an edge to the is $\mu$ and the variance $\sigma^2$. Given this set up, there must be a 'true' expected marignal improvement to the additional of an edge.
+
+The expected improvement should be determined by the order in which it is added to the $m+k-l$ edged graph. Also the reward will be highly dependent on what edges have been added previously.
+
+In the new approach, each iteration of the algorithm now implies an addition of k edges to the MST i.e. in each iteration we produce a $m+k$ edged graph.
+
+We find the reward associated with the addition of each edge marginally. Thus, its reward will depend on when it is added and what the state of the graph is. 
+
+This should address the issue of non variable rewards in the first implementation. 
+
+```{r packages, echo = FALSE}
+# Package Install
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(lubridate)
+library(tidyverse)
+library(geodist)
+library(countrycode)
+library(geodist)
+library(dplyr)
+library(maps)
+library(ggmap)
+library(igraph)
+library(geosphere)
+library(GNAR)
+library(MCMCpack)
+library(glue)
+```
+
+Loading data, note some missing entries here
+
+```{r data, echo = FALSE}
+setwd('/Users/harrymccarthy/Documents/Imperial/Summer_Project/R Code')
+unemployment_data <- read.csv('OECD_monthly_unemployment.csv')
+unemployment_ts <- read.csv('unemployment_ts.csv')
+unemployment_vts <- ts(subset(unemployment_ts, select = -Month_Year))
+head(unemployment_ts)
+```
+
+
+
+
+```{r plot_helper, echo = FALSE}
+# Helper function for plotting
+plot_from_matrix <- function(mat, title){
+    g <- graph.adjacency(mat, mode = "undirected", weighted = TRUE)
+
+    # Set vertex attributes for labels
+    V(g)$label <- rownames(mat)
+
+    # Plot the graph with adjusted parameters
+    plot(g, layout = layout_with_fr,
+         vertex.size = 10,            # Increase node size
+         vertex.label.cex = 0.8,      # Adjust label size
+         vertex.label.dist = 0.8,     # Increase label distance from nodes
+         vertex.color = "lightblue",  # Node color
+         vertex.frame.color = "gray", # Node border color
+         edge.width = 2,              # Edge thickness
+         edge.color = "black",        # Edge color
+         main = title)
+}
+```
+
+```{r, MST_network, echo = FALSE}
+plot_from_matrix(MST_37, "Distance Inferred Minimum Spanning Tree")
+```
+
+```{r num_edges_MST, echo = FALSE}
+num_edges_MST <- ecount(graph_from_adjacency_matrix(MST_37, mode = 'undirected'))
+print(glue('Number of edges in  MST: {num_edges_MST}'))
+```
+
+```{r distance_600, echo=FALSE}
+plot_from_matrix(distance_matrix_600, 'Proximity Inferred Tree (600 km)')
+```
+
+```{r num_distance_600_edges, echo = FALSE}
+num_edges_distance_matrix_600 <- ecount(graph_from_adjacency_matrix(distance_matrix_600, mode = 'undirected'))
+print(glue('Number of edges in 600km Distance Matrix: {num_edges_distance_matrix_600}'))
+```
+
+Finding the number of unique edges added by the proximity inferred matrix
+
+```{r k_unique_edges, echo = FALSE}
+# Convert adjacency matrices to edge lists
+MST_37_edges <- adj_matrix_to_edge_list(MST_37)
+distance_matrix_600_edges <- adj_matrix_to_edge_list(distance_matrix_600)
+
+# Find unique edges in distance_matrix_600 that are not in MST_37
+unique_edges <- find_unique_edges(MST_37_edges, distance_matrix_600_edges)
+
+# Count the number of unique edges
+num_unique_edges <- length(unique_edges)
+print(glue('Number of additional edges versus MST; {num_unique_edges}'))
+```
+
+```{r merged_MST_600, echo = FALSE}
+merged_adj_matrix <- merge_adjacency_matrices_igraph(distance_matrix_600, MST_37)
+plot_from_matrix(merged_adj_matrix, 'Merged Minimum Spanning & Proximity Tree')
+```
+
+```{r num_edges_merged, echo = FALSE}
+num_edges_merged <- ecount(graph_from_adjacency_matrix(merged_adj_matrix, mode = 'undirected'))
+print(glue('Number of edges in Merged Matrix: {num_edges_merged}'))
+```
+
+Note that this means the resulting network from our sampling should have `r num_edges_merged` number of edges
+
+***Revised Thompson's Sampling Implementation***
+
+Now we write a Thompsons Sampling alogorithm to search for $m+k$ edged graphs
+
+```{r sampling_helper_functions, echo=FALSE}
+
+# Function to get upper triangular indices of a square matrix
+get_upper_triangular_indices <- function(n) {
+  # Create an empty matrix with dimensions n x n
+  mat <- matrix(0, n, n)
+  
+  # Get the upper triangular indices
+  indices <- which(upper.tri(mat, diag = FALSE), arr.ind = TRUE)
+  
+  # Convert to a list of pairs
+  indices_list <- split(indices, row(indices))
+  
+  return(indices_list)
+}
+
+# Finds Row/Col where indices equal 1
+find_upper_triangular_indices <- function(adj_matrix) {
+  # Find indices where adj_matrix is 1
+  indices <- which(adj_matrix == 1, arr.ind = TRUE)
+  
+  # Filter for upper triangular indices
+  upper_triangular_indices <- indices[indices[,1] < indices[,2], ]
+  
+  return(upper_triangular_indices)
+}
+
+# Function to reconstruct a matrix from upper triangular indices
+reconstruct_matrix <- function(n, indices_mat) {
+  # Initialize an empty n x n matrix
+  mat <- matrix(0, n, n)
+  
+  # Use matrix indexing to fill in the upper triangular part
+  mat[cbind(indices_mat[,1], indices_mat[,2])] <- rep(1, nrow(indices_mat))
+  
+  # Mirror the upper triangular part to the lower triangular part to keep the matrix symmetric
+  mat <- mat + t(mat)
+  
+  return(mat)
+}
+```
+
+
+Initialising Variables
+ 
+```{r init_variables}
+# Initialising Variables and prior distribution parameters
+n_iterations <- 1000
+n_nodes <- 37
+n_arms <- n_nodes*(n_nodes -1)*0.5 # Note should we deduct num_edges_MST? Or just never choose those arms?
+upper_tri_indices <- get_upper_triangular_indices(n_nodes) # Finds the indices of a num_nodes x num_nodes sized matrix
+mu_0 <- 0   # prior mean
+sigma <- 1 # prior variance - Should this be uninformative? Where do we actually use this?
+kappa_0 <- 1
+alpha_0 <- 1
+beta_0 <- 1
+
+init_indices <- find_upper_triangular_indices(MST_37) # Initial MST_37 Indices
+init_indices_flat <- which(MST_37[upper.tri(MST_37)] == 1)
+```
+
+
+```{r thompson_nig_v2}
+# Thompson Sampling with Normal-Inverse-Gamma Priors
+thompson_sampling_nig_v2 <- function(n_nodes, mu_0, kappa_0, alpha_0, beta_0, init_indices, n_arms, n_iterations, num_unique_edges){
+  
+  # Initialize parameters for each arm
+  mu <- rep(mu_0, n_arms)
+  kappa <- rep(kappa_0, n_arms)
+  alpha <- rep(alpha_0, n_arms)
+  beta <- rep(beta_0, n_arms)
+  n <- rep(0, n_arms)
+  x_bar <- rep(0, n_arms)
+  S <- rep(0, n_arms)
+  chosen_arms <- numeric(n_iterations*k)  # Vector to store chosen arms
+  
+  # Initialize the network with the initial MST
+  last_net_indices <- init_indices
+  
+  start_time <- proc.time() 
+  timing <- system.time({
+      
+  for (t in 1:n_iterations) {
+     # Keep track of the edges chosen in this iteration to avoid repetition
+     chosen_this_iter <- numeric(0)
+     
+     for(edge in 1:num_unique_edges){
+         # Sampling step - sample from each arm
+         sampled_means <- numeric(n_arms) 
+         
+         for (i in 1:n_arms) {
+             sampled_sigma2 <- rinvgamma(1, alpha[i], beta[i]) # Sample a variance
+             sampled_means[i] <- rnorm(1, mu[i], sqrt(sampled_sigma2 / kappa[i]))
+         }
+         
+         # Need to select a 'new arm'
+         available_arms <- setdiff(1:n_arms, chosen_this_iter) # Subtracts already chosen arms
+         sampled_means <- sampled_means[available_arms] # Filters to keep only available means
+         chosen_arm_idx <- which.min(abs(sampled_means))
+         chosen_arm <- available_arms[chosen_arm_idx]
+         chosen_arms[(t - 1) * k + edge] <- chosen_arm  # Record chosen arm
+         chosen_this_iter <- c(chosen_this_iter, chosen_arm)
+         
+         # Select the arm and update the last generated network with the selected indices
+         last_net_indices <- rbind(upper_tri_indices[[chosen_arm]], last_net_indices)
+         
+         # Reconstruct the network from the updated indices
+         net <- as.GNARnet(reconstruct_matrix(num_nodes, last_net_indices))
+         fit <- GNARfit(vts = unemployment_vts[1:275,], net = net, alphaOrder = 1, betaOrder = c(2), globalalpha = TRUE)
+         
+         # Find error (GNAR prediction accuracy)
+         error <- sum(unemployment_vts[276,] - predict(fit))^2
+         
+         # Update the posterior parameters for the chosen arm
+         n_chosen <- n[chosen_arm]
+         n[chosen_arm] <- n_chosen + 1
+         x_bar[chosen_arm] <- (x_bar[chosen_arm] * n_chosen + error) / n[chosen_arm]
+         S[chosen_arm] <- S[chosen_arm] + (error - x_bar[chosen_arm])^2 * n_chosen / (n_chosen + 1)
+         kappa[chosen_arm] <- kappa[chosen_arm] + 1
+         mu[chosen_arm] <- (kappa[chosen_arm] * mu[chosen_arm] + error) / (kappa[chosen_arm] + 1)
+         alpha[chosen_arm] <- alpha[chosen_arm] + 0.5
+         beta[chosen_arm] <- beta[chosen_arm] + 0.5 * ((error - mu[chosen_arm])^2 / (kappa[chosen_arm] + 1) + S[chosen_arm])
+     }
+     
+     if (t %% 500 == 0) {
+         elapsed_time <- proc.time() - start_time  # Calculate elapsed time
+         print(paste("Iteration:", t, "- Unique arms sampled:", length(unique(chosen_arms[1:(t * num_unique_edges)])),
+                     "Time Elapsed:", elapsed_time[3], "seconds"))
+         }
+     }})
+  
+  # Print the elapsed time
+  print(paste("Elapsed time:", timing["elapsed"], "seconds"))
+  return(mu)
+ }
+
+results_v3 <- thompson_sampling_nig_v2(n_nodes = n_nodes, mu_0 = mu_0, kappa_0 = kappa_0, alpha_0 = alpha_0, beta_0 = beta_0,
+                    init_indices = init_indices, n_arms = n_arms, n_iterations = n_iterations, num_unique_edges = num_unique_edges)
+
+```
+
+
+```{r}
+thompson_sampling_nig_v2 <- function(n_nodes, mu_0, kappa_0, alpha_0, beta_0, init_indices, n_arms, n_iterations, num_unique_edges) {
+  # Initialize parameters for each arm
+  mu <- rep(mu_0, n_arms)
+  kappa <- rep(kappa_0, n_arms)
+  alpha <- rep(alpha_0, n_arms)
+  beta <- rep(beta_0, n_arms)
+  n <- rep(0, n_arms)
+  x_bar <- rep(0, n_arms)
+  S <- rep(0, n_arms)
+  chosen_arms <- numeric(n_iterations * num_unique_edges)  # Vector to store chosen arms
+  
+
+  # For visualization
+  mu_history <- list()
+  sigma_history <- list()
+  chosen_arms_count <- matrix(0, ncol = n_arms, nrow = ceiling(n_iterations / 5))
+
+  # Initialize the network with the initial MST
+  last_net_indices <- init_indices
+  
+  start_time <- proc.time() 
+  timing <- system.time({
+
+  for (t in 1:n_iterations) {
+    chosen_this_iter <- numeric(0)
+    
+    # Initialize the network with the initial MST
+    last_net_indices <- init_indices
+    
+    for (edge in 1:num_unique_edges) {
+      sampled_means <- numeric(n_arms)
+      
+      for (i in 1:n_arms) {
+        sampled_sigma2 <- rinvgamma(1, alpha[i], beta[i])  # Sample a variance
+        sampled_means[i] <- rnorm(1, mu[i], sqrt(sampled_sigma2 / kappa[i]))
+      }
+
+      available_arms <- setdiff(1:n_arms, chosen_this_iter)
+      sampled_means <- sampled_means[available_arms]
+      chosen_arm_idx <- which.min(abs(sampled_means))
+      chosen_arm <- available_arms[chosen_arm_idx]
+      chosen_arms[(t - 1) * num_unique_edges + edge] <- chosen_arm
+      chosen_this_iter <- c(chosen_this_iter, chosen_arm)
+      
+      # Select the arm and update the last generated network with the selected indices
+      last_net_indices <- rbind(upper_tri_indices[[chosen_arm]], last_net_indices)
+      
+      # Reconstruct the network from the updated indices
+      net <- as.GNARnet(reconstruct_matrix(n_nodes, last_net_indices))
+      fit <- GNARfit(vts = unemployment_vts[1:275,], net = net, alphaOrder = 1, betaOrder = c(2), globalalpha = TRUE)
+      
+      # Find error (GNAR prediction accuracy)
+      error <- sum(unemployment_vts[276,] - predict(fit))^2
+
+      # Update the posterior parameters for the chosen arm
+      n_chosen <- n[chosen_arm]
+      n[chosen_arm] <- n_chosen + 1
+      x_bar[chosen_arm] <- (x_bar[chosen_arm] * n_chosen + error) / n[chosen_arm]
+      S[chosen_arm] <- S[chosen_arm] + (error - x_bar[chosen_arm])^2 * n_chosen / (n_chosen + 1)
+      kappa[chosen_arm] <- kappa[chosen_arm] + 1
+      mu[chosen_arm] <- (kappa[chosen_arm] * mu[chosen_arm] + error) / (kappa[chosen_arm] + 1)
+      alpha[chosen_arm] <- alpha[chosen_arm] + 0.5
+      beta[chosen_arm] <- beta[chosen_arm] + 0.5 * ((error - mu[chosen_arm])^2 / (kappa[chosen_arm] + 1) + S[chosen_arm])
+    }
+    
+    if (t %% 5 == 0) {
+      # Store for visualization
+      mu_history[[length(mu_history) + 1]] <- mu
+      sigma_history[[length(sigma_history) + 1]] <- sqrt(beta / (alpha - 1))
+      chosen_arms_count[t / 5, ] <- table(factor(chosen_arms[1:(t * num_unique_edges)], levels = 1:n_arms))
+      
+      elapsed_time <- proc.time() - start_time  # Calculate elapsed time
+      print(paste("Iteration:", t, "- Unique arms sampled:", length(unique(chosen_arms[1:(t * num_unique_edges)])),
+                     "Time Elapsed:", elapsed_time[3], "seconds"))
+    }
+  }})
+  
+  # Print the elapsed time
+  print(paste("Elapsed time:", timing["elapsed"], "seconds"))
+  return(list(mu = mu, mu_history = mu_history, sigma_history = sigma_history, chosen_arms_count = chosen_arms_count))
+}
+
+
+results_v3 <- thompson_sampling_nig_v2(n_nodes = n_nodes, mu_0 = mu_0, kappa_0 = kappa_0, alpha_0 = alpha_0, beta_0 = beta_0,
+                    init_indices = init_indices, n_arms = n_arms, n_iterations = n_iterations, num_unique_edges = num_unique_edges)
+
+```
+
+
+Note that in the below plot of standard devs the largest go to infinity
+
+```{r plotting evolution of parameters}
+library(ggplot2)
+library(gridExtra)
+
+plot_histograms <- function(mu_history, sigma_history, chosen_arms_count) {
+  # Create a sequence of iteration indices for every hundredth iteration
+  iteration_indices <- seq(10, length(mu_history), by = 10)
+
+  for (i in iteration_indices) {
+    mu_df <- data.frame(arm = 1:length(mu_history[[i]]), mu = mu_history[[i]])
+    sigma_df <- data.frame(arm = 1:length(sigma_history[[i]]), sigma = sigma_history[[i]])
+    count_df <- data.frame(arm = 1:ncol(chosen_arms_count), count = chosen_arms_count[i, ])
+
+    p1 <- ggplot(mu_df, aes(x = arm, y = mu)) +
+      geom_bar(stat = "identity", fill = "blue") +
+      ggtitle(paste("Posterior Means at Iteration", i*5))
+
+    p2 <- ggplot(sigma_df, aes(x = arm, y = sigma)) +
+      geom_bar(stat = "identity", fill = "red") +
+      ggtitle(paste("Posterior Std Devs at Iteration", i*5))
+
+    p3 <- ggplot(count_df, aes(x = arm, y = count)) +
+      geom_bar(stat = "identity", fill = "green") +
+      ggtitle(paste("Chosen Arms Count at Iteration", i*5))
+
+    grid.arrange(p1, p2, p3, nrow = 3)
+  }
+}
+
+# Assume result is the output from the thompson_sampling_nig_v2 function
+plot_histograms(results_v3$mu_history, results_v3$sigma_history, results_v3$chosen_arms_count)
+
+
+```
+
+Now grabbing the 26 lowest means 
+
+```{r}
+init_indices_flat
+```
+
+```{r}
+posterior_mus_v3 <- results_v3$mu
+posterior_mus_v3[init_indices_flat] <- Inf
+
+# Get the indices of the lowest k entries
+k <- 26
+lowest_k_indices_v3 <- order(posterior_mus_v3)[1:k]
+lowest_k_indices_v3
+```
+
+```{r}
+indices_of_ones_v3 <- rep(0, num_arms)
+indices_of_ones_v3[lowest_k_indices_v3] <- 1
+
+# Initialize an nxn matrix filled with zeros
+result_matrix_v3 <- matrix(0, 37, 37) # change for num_nodes
+
+# Calculate the indices for the upper triangular part of the matrix
+upper_indices <- upper.tri(result_matrix_v3)
+result_matrix_v3[upper_indices] <- indices_of_ones_v3
+
+# Make the matrix symmetric by copying the upper triangular part to the lower triangular part
+result_matrix_v2 <- result_matrix_v3 + t(result_matrix_v3) - diag(diag(result_matrix_v3))
+
+
+rownames(result_matrix_v3) <- colnames(unemployment_vts)
+colnames(result_matrix_v3) <- colnames(unemployment_vts)
+
+# Plotting graph
+# Create a graph object from the adjacency matrix
+g <- graph.adjacency(result_matrix_v3, mode = "undirected", weighted = TRUE)
+
+# Set vertex attributes for labels
+# V(g)$label <- rownames(result_matrix_v1)
+
+# Plot the graph with adjusted parameters
+plot(g, layout = layout_with_fr,
+     vertex.size = 10,            # Increase node size
+     vertex.label.cex = 0.8,      # Adjust label size
+     vertex.label.dist = 0.8,     # Increase label distance from nodes
+     vertex.color = "lightblue",  # Node color
+     vertex.frame.color = "gray", # Node border color
+     edge.width = 2,              # Edge thickness
+     edge.color = "black",        # Edge color
+     main = expression(paste("Lowest Means - Thompson Sampling Network Sequential (", mu, " unknown, ", sigma^2, " unknown")
+          ))
+```
+```{r}
+merged_graph_v3 <- merge_adjacency_matrices_igraph(result_matrix_v3, MST_37)
+# Plotting graph
+
+# Create a graph object from the adjacency matrix
+g <- graph.adjacency(merged_graph_v3, mode = "undirected", weighted = TRUE)
+
+# Set vertex attributes for labels
+V(g)$label <- rownames(merged_graph_v3)
+
+# Plot the graph with adjusted parameters
+plot(g, layout = layout_with_fr,
+     vertex.size = 10,            # Increase node size
+     vertex.label.cex = 0.8,      # Adjust label size
+     vertex.label.dist = 0.8,     # Increase label distance from nodes
+     vertex.color = "lightblue",  # Node color
+     vertex.frame.color = "gray", # Node border color
+     edge.width = 2,              # Edge thickness
+     edge.color = "black",        # Edge color
+     main = expression(paste("Merged - Thompson Sampling Network (", mu, " unknown, ", sigma^2, " unknown)")
+          ))
+
+```
+```{r}
+net_3 <- as.GNARnet(merged_graph_v3)
+
+# Fitting GNAR
+fit_3 <- GNARfit(vts = unemployment_vts[1:275,], net = net_3, alphaOrder = 1, betaOrder = c(2), globalalpha = TRUE)
+
+# Within-Sample prediction accuracy
+glue('Fit 3; Global-Alpha GNAR(1, [2]) Prediction Error; ', sum(unemployment_vts[276,] - predict(fit_3))^2)
+```

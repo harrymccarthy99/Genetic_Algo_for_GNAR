@@ -1,0 +1,22 @@
+"1","Loading required package: foreach
+
+Attaching package: ‘foreach’
+
+The following objects are masked from ‘package:purrr’:
+
+    accumulate, when
+
+Loading required package: iterators
+  ____    _    
+ / ___|  / \     Genetic 
+| |  _  / _ \    Algorithms
+| |_| |/ ___ \   
+ \____/_/   \_\  version 3.2.4
+Type 'citation(\"GA\")' for citing this R package in publications.
+
+Attaching package: ‘GA’
+
+The following object is masked from ‘package:utils’:
+
+    de
+"

@@ -1,0 +1,9 @@
+"0","```r
+unique(data$REF_AREA)
+```"
+"1"," [1] \"OECD\"      \"BEL\"       \"JPN\"       \"EA20\"      \"CZE\"       \"ESP\"       \"MEX\"       \"LTU\"       \"NOR\"       \"COL\"      
+[11] \"ISR\"       \"EU27_2020\" \"AUS\"       \"AUT\"       \"CRI\"       \"PRT\"       \"DEU\"       \"LUX\"       \"SWE\"       \"CAN\"      
+[21] \"G7\"        \"ITA\"       \"POL\"       \"TUR\"       \"FRA\"       \"GRC\"       \"DNK\"       \"SVK\"       \"IRL\"       \"ISL\"      
+[31] \"GBR\"       \"NLD\"       \"HUN\"       \"KOR\"       \"LVA\"       \"FIN\"       \"CHL\"       \"SVN\"       \"USA\"       \"EST\"      
+[41] \"BGR\"      
+"

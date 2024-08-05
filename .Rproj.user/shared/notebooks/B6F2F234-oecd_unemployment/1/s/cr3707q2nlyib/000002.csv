@@ -1,0 +1,16 @@
+"0","```r
+
+# Assuming 'data' is your data frame with columns Month_Year, OBS_VALUE, and REF_AREA
+
+# Plot using ggplot2 with viridis color palette
+ggplot(data, aes(x = Month_Year, y = OBS_VALUE, color = REF_AREA)) +
+  geom_line() +
+  labs(x = \"Year\", y = \"Unemployment Rate\", title = \"Unemployment Rate by Country over Time\") +
+  scale_color_viridis_d(name = \"Country\", option = \"plasma\") + # Use 'plasma' or another option for color scheme
+  theme_minimal() +   # Using a minimal theme
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()    # Remove minor gridlines
+  )
+
+```"

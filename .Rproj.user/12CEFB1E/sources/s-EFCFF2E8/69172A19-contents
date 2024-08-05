@@ -1,0 +1,167 @@
+library(igraph)
+library(here)
+library(countrycode)
+
+
+load(here('data', 'MST_Distance_Networks.RData'))
+
+# Getting iso_codes
+iso_codes <- rownames(MST_37)
+
+# Get the world cities data
+data(world.cities)
+
+# Filter for capital cities and match with the provided country names
+capitals <- subset(world.cities, capital == 1)
+
+# Create a vector mapping country names to ISO codes
+country_names <- countrycode(iso_codes, "iso2c", "country.name")
+
+# Create a data frame with country names and corresponding ISO codes
+country_iso_df <- data.frame(
+  country = country_names,
+  iso_code = iso_codes,
+  stringsAsFactors = FALSE
+)
+
+replace_map <- data.frame(
+  From = c("USA", "UK", "Czech Republic", "Korea South"),
+  To = c("United States", "United Kingdom", "Czechia", "South Korea")
+)
+
+
+# Replace country names in df based on condition
+capitals$country.etc <- ifelse(capitals$country.etc %in% replace_map$From, 
+                               replace_map$To[match(capitals$country.etc, replace_map$From)],
+                               capitals$country.etc)
+
+# Merge this with capitals_subset to add ISO codes
+capitals_subset <- subset(capitals, country.etc %in% country_names)
+
+# Join the ISO codes to capitals_subset, now have longitudes and latitudes of each contry with iso code
+
+capitals_subset <- merge(capitals_subset, country_iso_df, by.x = "country.etc", by.y = "country", all.x = TRUE)
+capitals_subset <- capitals_subset[!duplicated(capitals_subset$country.etc), ]
+
+coords <- data.frame(
+  country_codes = capitals_subset$iso_code,  # replace with your actual country names
+  latitude = capitals_subset$lat,
+  longitude = capitals_subset$long
+)
+
+
+# Define the function to merge and plot the graphs
+plot_merged_graph <- function(mat1, mat2, coords, title, file_name) {
+  # Construct the output path
+  output_path <- file.path('output', 'figures', file_name)
+  
+  # Create a merged adjacency matrix with priority given to mat1
+  combined_mat <- pmax(mat1, mat2)
+  
+  # Create the graph object from the combined adjacency matrix
+  g <- graph_from_adjacency_matrix(combined_mat, mode = "undirected", diag = FALSE)
+  
+  # Match vertex names with coordinates
+  V(g)$latitude <- coords$latitude[match(V(g)$name, coords$country_codes)]
+  V(g)$longitude <- coords$longitude[match(V(g)$name, coords$country_codes)]
+  
+  # Check for missing coordinates
+  if (any(is.na(V(g)$latitude)) || any(is.na(V(g)$longitude))) {
+    stop("Some vertices are missing coordinates.")
+  }
+
+  # Define a layout based on coordinates
+  layout_coords <- as.matrix(data.frame(x = V(g)$longitude, y = V(g)$latitude))
+  
+  # Ensure layout coordinates are properly formatted
+  if (any(is.na(layout_coords))) {
+    stop("Layout coordinates contain NA values.")
+  }
+
+  # Open PNG device
+  png(filename = output_path, width = 800, height = 600)
+  
+  # Plot the graph with coordinates
+  plot(g, layout = layout_coords, 
+       vertex.size = 10,            # Increase node size
+       vertex.label.cex = 0.8,      # Adjust label size
+       vertex.label.dist = 0,        # Increase label distance from nodes
+       vertex.color = "lightblue",  # Node color
+       vertex.frame.color = "gray", # Node border color
+       edge.width = 2,              # Edge thickness
+       edge.color = "gray",         # Edge color
+       main = title)
+
+  # Close PNG device
+  dev.off()
+}
+
+# mat1 <- matrix(c(0, 1, 1, 1, 0, 0, 1, 0, 0), nrow = 3, byrow = TRUE,
+#                dimnames = list(c("US", "CA", "MX"), c("US", "CA", "MX")))
+# mat2 <- matrix(c(0, 0, 1, 0, 0, 1, 1, 1, 0), nrow = 3, byrow = TRUE,
+#                dimnames = list(c("US", "CA", "MX"), c("US", "CA", "MX")))
+# 
+# # Define coordinates data frame
+# coords <- data.frame(
+#   country_codes = c("US", "CA", "MX"),
+#   longitude = c(-98.35, -106.35, -102.55),
+#   latitude = c(39.50, 56.13, 23.64)
+# )
+# 
+# # Plot and save the merged graph
+# plot_merged_graph(MST_37, distance_matrix_600, coords, "Network Graph with Geographic Coordinates", "network_graph.png")
+
+
+library(geosphere)
+
+# Convert data frame to matrix
+locations <- coords[, c("longitude", "latitude")]
+
+
+# Calculate pairwise distances (in kilometers) using Haversine formula
+distance_matrix <- distm(locations, fun = distHaversine)
+
+# Convert the matrix to a data frame for better readability
+distance_matrix_df <- as.data.frame(distance_matrix)
+rownames(distance_matrix_df) <- rownames(MST_37)
+colnames(distance_matrix_df) <- colnames(MST_37)
+rownames(distance_matrix) <- rownames(MST_37)
+colnames(distance_matrix) <- colnames(MST_37)
+
+log_distance_matrix <- log(distance_matrix + epsilon)
+diag(log_distance_matrix) <- 0
+
+# In a real-world scenario, this would depend on your specific needs
+adjacency_matrix <- 1 / (1 + log_distance_matrix)
+
+#Create the graph object from the adjacency matrix
+g <- graph_from_adjacency_matrix(adjacency_matrix, mode = "undirected", diag = FALSE)
+
+# Match vertex names with coordinates
+V(g)$latitude <- coords$latitude[match(V(g)$name, coords$country_codes)]
+V(g)$longitude <- coords$longitude[match(V(g)$name, coords$country_codes)]
+# 
+# Define a layout based on coordinates
+layout_coords <- as.matrix(data.frame(x = V(g)$longitude, y = V(g)$latitude))
+
+# Open PNG device
+png(filename = "network_graph.png", width = 800, height = 600)
+
+# Plot the graph with coordinates
+plot(g, layout = layout_coords,
+     vertex.size = 10,            # Increase node size
+     vertex.label.cex = 0.8,      # Adjust label size
+     vertex.label.dist = 0,        # Increase label distance from nodes
+     vertex.color = "lightblue",  # Node color
+     vertex.frame.color = "gray", # Node border color
+     edge.width = 2,              # Edge thickness
+     edge.color = "gray",         # Edge color
+     main = "Network Graph with Logarithmic Scaling")
+
+# Close PNG device
+dev.off()
+
+
+
+
+

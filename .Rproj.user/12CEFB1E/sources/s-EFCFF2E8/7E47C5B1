@@ -1,0 +1,25 @@
+{
+    "id": "7E47C5B1",
+    "path": "~/Documents/Imperial/Summer_Project/genetic_algo_for_gnar/src/ga_unconstrained_network_search.R",
+    "project_path": "src/ga_unconstrained_network_search.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": true,
+    "created": 1722331424999.0,
+    "source_on_save": false,
+    "relative_order": 6,
+    "properties": {
+        "tempName": "Untitled1",
+        "cursorPosition": "39,6",
+        "scrollLine": "31"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1722334538,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1722334751700,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,24 @@
+"0","# Convert nodes to an sf object"
+"0","nodes_sf <- st_as_sf(nodes_df, coords = c(""longitude"", ""latitude""), crs = 4326)"
+"0",""
+"0","# Create an empty plot"
+"0","p <- ggplot(data = world) +"
+"0","  geom_sf() +"
+"0","  geom_sf(data = nodes_sf, color = 'blue', size = 3) +"
+"0","  geom_sf_text(data = nodes_sf, aes(label = country_codes), size = 3, nudge_y = 2) +"
+"0","  geom_segment(data = edges_df %>%"
+"0","                 left_join(nodes_df, by = c(""from"" = ""country_codes"")) %>%"
+"0","                 rename(from_lat = lat, from_lon = lon) %>%"
+"0","                 left_join(nodes_df, by = c(""to"" = ""country_codes"")) %>%"
+"0","                 rename(to_lat = latitude, to_lon = longitude),"
+"0","               aes(x = from_lon, y = from_lat, xend = to_lon, yend = to_lat),"
+"0","               color = 'red') +"
+"0","  theme_minimal() +"
+"0","  labs(title = ""Geographical Network of OECD Countries"")"
+"1","[1m[33mError[39m in `rename()`:[22m
+[33m![39m Can't rename columns that don't exist.
+[31m✖[39m Column `lat` doesn't exist.
+Backtrace:
+[90m 1. [39mggplot2::geom_segment(...)
+[90m 8. [39m[1m[94mdplyr:::rename.data.frame([39m[22m., from_lat = lat, from_lon = lon[1m[94m)[39m[22m
+"

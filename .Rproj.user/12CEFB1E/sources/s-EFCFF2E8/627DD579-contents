@@ -1,0 +1,134 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(igraph)
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(dplyr)
+library(here)
+library(countrycode)
+library(maps)
+```
+
+
+```{r}
+load(here('data', 'MST_Distance_Networks.RData'))
+
+# Getting iso_codes
+iso_codes <- rownames(MST_37)
+
+# Get the world cities data
+data(world.cities)
+
+# Filter for capital cities and match with the provided country names
+capitals <- subset(world.cities, capital == 1)
+
+# Create a vector mapping country names to ISO codes
+country_names <- countrycode(iso_codes, "iso2c", "country.name")
+
+# Create a data frame with country names and corresponding ISO codes
+country_iso_df <- data.frame(
+  country = country_names,
+  iso_code = iso_codes,
+  stringsAsFactors = FALSE
+)
+
+replace_map <- data.frame(
+  From = c("USA", "UK", "Czech Republic", "Korea South"),
+  To = c("United States", "United Kingdom", "Czechia", "South Korea")
+)
+
+
+# Replace country names in df based on condition
+capitals$country.etc <- ifelse(capitals$country.etc %in% replace_map$From, 
+                               replace_map$To[match(capitals$country.etc, replace_map$From)],
+                               capitals$country.etc)
+
+# Merge this with capitals_subset to add ISO codes
+capitals_subset <- subset(capitals, country.etc %in% country_names)
+
+# Join the ISO codes to capitals_subset, now have longitudes and latitudes of each contry with iso code
+
+capitals_subset <- merge(capitals_subset, country_iso_df, by.x = "country.etc", by.y = "country", all.x = TRUE)
+capitals_subset <- capitals_subset[!duplicated(capitals_subset$country.etc), ]
+
+coords <- data.frame(
+  country_codes = capitals_subset$iso_code,  # replace with your actual country names
+  latitude = capitals_subset$lat,
+  longitude = capitals_subset$long
+)
+head(coords)
+
+```
+
+```{r}
+combined_mat <- pmax(MST_37, distance_matrix_600)
+combined_mat
+```
+
+
+
+```{r}
+# Load world map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+# Example data frames
+nodes_df <- coords
+
+country_codes <- rownames(combined_mat)
+
+# Find the non-zero entries in the adjacency matrix
+edges <- which(combined_mat != 0, arr.ind = TRUE)
+
+# Create a data frame for edges
+edges_df <- data.frame(
+  from = country_codes[edges[, 1]],
+  to = country_codes[edges[, 2]]
+)
+
+# Step 2: Ensure undirected edges are not duplicated
+# Since the graph is undirected, remove duplicates (e.g., "A to B" and "B to A")
+edges_df <- edges_df %>%
+  filter(from < to)
+
+# Print the result
+print(edges_df)
+```
+
+
+```{r}
+# Convert nodes to an sf object
+nodes_sf <- st_as_sf(nodes_df, coords = c("longitude", "latitude"), crs = 4326)
+
+# Create an empty plot
+p <- ggplot(data = world) +
+  geom_sf() +
+  geom_sf(data = nodes_sf, color = 'blue', size = 3) +
+  geom_sf_text(data = nodes_sf, aes(label = country_codes), size = 3, nudge_y = 2) +
+  geom_segment(data = edges_df %>%
+                 left_join(nodes_df, by = c("from" = "country_codes")) %>%
+                 rename(from_lat = lat, from_lon = lon) %>%
+                 left_join(nodes_df, by = c("to" = "country_codes")) %>%
+                 rename(to_lat = latitude, to_lon = longitude),
+               aes(x = from_lon, y = from_lat, xend = to_lon, yend = to_lat),
+               color = 'red') +
+  theme_minimal() +
+  labs(title = "Geographical Network of OECD Countries")
+
+# Display the plot
+print(p)
+
+```
+
+
+```{r}
+# Get map data for plotting
+map_data <- get_map(location = 'world', zoom = 2)
+
+```

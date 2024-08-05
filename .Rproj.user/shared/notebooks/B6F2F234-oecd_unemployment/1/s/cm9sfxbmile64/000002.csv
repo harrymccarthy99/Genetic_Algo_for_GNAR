@@ -1,0 +1,20 @@
+"0","```r
+data_wide <- dcast(data, Month_Year ~ REF_AREA, value.var = \"OBS_VALUE\")
+
+# Calculate the correlation matrix
+corr_matrix <- cor(data_wide[, -1], use = \"complete.obs\")
+
+# Convert to long format for ggplot
+corr_long <- melt(corr_matrix)
+
+# Plot the heatmap
+ggplot(corr_long, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis_c(option = \"plasma\", name = \"Correlation\") +
+  theme_minimal() +
+  labs(x = \"Country\", y = \"Country\", title = \"Correlation of Unemployment Rates\") +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+
+  )
+```"

@@ -1,0 +1,25 @@
+{
+    "id": "FD15213F",
+    "path": "~/Documents/Imperial/Summer_Project/R Code/genetic_algo_v1.Rmd",
+    "project_path": null,
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": true,
+    "created": 1722259053541.0,
+    "source_on_save": false,
+    "relative_order": 3,
+    "properties": {
+        "chunk_output_type": "inline",
+        "cursorPosition": "171,0",
+        "scrollLine": "170"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1722258916,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1722328855379,
+    "read_only": false,
+    "read_only_alternatives": []
+}

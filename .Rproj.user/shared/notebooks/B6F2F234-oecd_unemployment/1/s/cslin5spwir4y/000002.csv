@@ -1,0 +1,5 @@
+"0","```r
+cols_to_keep <- c('REF_AREA', 'Reference.area', 'Month_Year', 'OBS_VALUE')
+data <- data[, cols_to_keep]
+head(data)
+```"

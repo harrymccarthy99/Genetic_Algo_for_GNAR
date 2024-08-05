@@ -1,0 +1,25 @@
+{
+    "id": "B8E6C353",
+    "path": "~/Documents/Imperial/Summer_Project/R Code/results_2.Rmd",
+    "project_path": null,
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1722260221977.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "chunk_output_type": "inline",
+        "cursorPosition": "168,23",
+        "scrollLine": "158"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1722258899,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1722258899,
+    "read_only": false,
+    "read_only_alternatives": []
+}

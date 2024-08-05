@@ -1,0 +1,41 @@
+library(igraph)
+library(ggplot2)
+
+# Example data
+nodes <- c('A', 'B', 'C', 'D')
+log_distance_matrix <- matrix(c(
+  0, 1, 2, 3,
+  1, 0, 1.5, 2.5,
+  2, 1.5, 0, 1,
+  3, 2.5, 1, 0
+), nrow = 4, byrow = TRUE)
+
+adjacency_matrix <- matrix(c(
+  0, 1, 0, 1,
+  1, 0, 1, 0,
+  0, 1, 0, 1,
+  1, 0, 1, 0
+), nrow = 4, byrow = TRUE)
+
+coordinates <- data.frame(
+  node = nodes,
+  x = c(0, 1, 0, 1),
+  y = c(0, 0, 1, 1)
+)
+
+# Create a graph from the adjacency matrix
+g <- graph_from_adjacency_matrix(adjacency_matrix, mode = "undirected")
+V(g)$name <- nodes
+
+# Define the layout with the given coordinates
+layout <- as.matrix(coordinates[, c("x", "y")])
+
+# Draw the graph
+plot(g, layout = layout, vertex.label = V(g)$name, vertex.size = 30, vertex.color = "lightblue", edge.color = "grey")
+
+# Optionally, add edge weights based on log distances
+E(g)$weight <- as.vector(log_distance_matrix[upper.tri(log_distance_matrix)])
+
+# Add edge labels based on the weights
+plot(g, layout = layout, vertex.label = V(g)$name, vertex.size = 30, vertex.color = "lightblue", edge.color = "grey",
+     edge.label = E(g)$weight, edge.label.cex = 0.8, edge.label.color = "black")

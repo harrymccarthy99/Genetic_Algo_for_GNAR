@@ -1,0 +1,2 @@
+"0","combined_mat <- pmax(MST_37, distance_matrix_600)"
+"0","log_dist_mat <- combined_mat*adjacency_matrix"

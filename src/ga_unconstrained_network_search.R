@@ -1,0 +1,54 @@
+# Loading Packages
+
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(lubridate)
+library(tidyverse)
+library(geodist)
+library(countrycode)
+library(geodist)
+library(dplyr)
+library(maps)
+library(ggmap)
+library(igraph)
+library(geosphere)
+library(GNAR)
+library(MCMCpack)
+library(glue)
+library(GA)
+library(here)
+
+# Read function definitions
+source(here("R", "ga_functions.R"))
+
+# Load data and networks
+unemployment_ts <- read.csv(here("data", "unemployment_ts.csv"))
+unemployment_vts <- ts(subset(unemployment_ts, select = -Month_Year))
+load(here('data', 'MST_Distance_Networks.RData'))
+
+
+# Define the GA parameters
+population_size <- 100
+number_of_bits <- 630
+crossover_prob <- 0.8
+mutation_prob <- 0.01
+max_generations <- 100
+
+# Custom binary GA
+binaryGA_unconstrained <- ga(
+  type = "binary",
+  fitness = fitness,
+  nBits = number_of_bits,
+  popSize = population_size,
+  pcrossover = crossover_prob,
+  pmutation = mutation_prob,
+  maxiter = max_generations,
+  run = max_generations,
+  monitor = TRUE
+)
+
+# Output the best solution
+summary(binaryGA_unconstrained)
+cat("Best solution:", binaryGA_unconstrained@solution, "\n")
+cat("Best fitness:", binaryGA_unconstrained@fitnessValue, "\n")

@@ -1,0 +1,6 @@
+"0","coords <- data.frame("
+"0","  country_codes = capitals_subset$iso_code,  # replace with your actual country names"
+"0","  latitude = capitals_subset$lat,"
+"0","  longitude = capitals_subset$long"
+"0",")"
+"0","head(coords)"
